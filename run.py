@@ -8,8 +8,7 @@ import math
 import pygame
 import time
 
-gravity = 9.81
-
+gravity = 9.81 # m/s
 
 class Entity:
 	def __init__(self):
@@ -25,54 +24,57 @@ class Entity:
 		# print("Acc:", self.acc)
 		# print("Vel:", self.vel)
 		# print("Position:", self.position)
-		
-	def apply(force):
-		self.acc = force / self.mass
 	
-class InvPendulum:
+class Pendulum:
 	def __init__(self):
-		self.entity = Entity()
+		self.bob = Entity()
+		self.base = Entity()
 		self.length = 1
-		self.angle = 0 # CW angle wrt vertical 
-		self.base_position = np.array([0,0]).astype('f')
-		self.entity.position = self.base_position + [0,self.length]
+		self.setAngle(0) # CW angle wrt vertical 
 	
 	def update(self, delta_s):
-		self.entity.acc = np.array([0,-gravity])
+		self.base.update(delta_s)
+		
+		self.bob.acc = np.array([0,-gravity])
 		# resolve constraints
-		pole_vector = self.entity.position - self.base_position
+		pole_vector = self.bob.position - self.base.position
 		pole_direction = pole_vector/np.linalg.norm(pole_vector)
 		pole_ppd = np.array([pole_direction[1], -pole_direction[0]])
-		self.entity.acc = pole_ppd * np.dot(self.entity.acc, pole_ppd)
-		self.entity.vel = pole_ppd * np.dot(self.entity.vel, pole_ppd)
+		self.bob.acc = pole_ppd * np.dot(self.bob.acc, pole_ppd)
+		self.bob.vel = pole_ppd * np.dot(self.bob.vel, pole_ppd)
 		# print("Direction:", pole_direction)
 		# print("Perpendicular:", pole_ppd)
-		# print("Acc:", self.entity.acc)
-		# print("Vel:", self.entity.vel)
-		self.entity.update(delta_s)
+		# print("Acc:", self.bob.acc)
+		# print("Vel:", self.bob.vel)
+		self.bob.update(delta_s)
 
 		# force length
-		pole_vector = self.entity.position - self.base_position
+		pole_vector = self.bob.position - self.base.position
 		pole_direction = pole_vector/np.linalg.norm(pole_vector)
-		self.entity.position = pole_direction * self.length
+		self.bob.position = pole_direction * self.length
 		#update angle
 		self.angle = math.acos( pole_direction[1] / self.length )
 		
 	def setAngle(self, angle):
-		self.entity.position = self.length * np.array([math.sin(angle), math.cos(angle)])
+		self.angle = angle
+		self.bob.position = self.length * np.array([math.sin(angle), math.cos(angle)])
+		
+	def accelerate(self, amount):
+		self.base.acc = amout
+		# transfer acc through rod
 
-class InvPendulumRender:
+class PendulumRender:
 	def render(screen, pendulum):
 		rects = []
-		base_start = pendulum.base_position-np.array([ sizeToScreen(0.001),0])
-		base_end = pendulum.base_position+np.array([ sizeToScreen(0.001),0])
+		base_start = pendulum.base.position-np.array([ sizeToScreen(0.001),0])
+		base_end = pendulum.base.position+np.array([ sizeToScreen(0.001),0])
 		rects.append(pygame.draw.line(screen, [255, 255, 255], pointToScreen(base_start), pointToScreen(base_end)))
-		rects.append(pygame.draw.line(screen, [255, 255, 255], pointToScreen(pendulum.base_position), pointToScreen(pendulum.entity.position)))
-		rects.append(pygame.draw.circle(screen, [255, 255, 255], pointToScreen(pendulum.entity.position), int(sizeToScreen(0.05))))
+		rects.append(pygame.draw.line(screen, [255, 255, 255], pointToScreen(pendulum.base.position), pointToScreen(pendulum.bob.position)))
+		rects.append(pygame.draw.circle(screen, [255, 255, 255], pointToScreen(pendulum.bob.position), int(sizeToScreen(0.05))))
 		
 		# render debug too
-		rects.append(pygame.draw.line(screen, [255, 0,0], pointToScreen(pendulum.entity.position), pointToScreen(pendulum.entity.position + pendulum.entity.acc)))
-		rects.append(pygame.draw.line(screen, [0,255,0], pointToScreen(pendulum.entity.position), pointToScreen(pendulum.entity.position + pendulum.entity.vel)))
+		rects.append(pygame.draw.line(screen, [255, 0,0], pointToScreen(pendulum.bob.position), pointToScreen(pendulum.bob.position + pendulum.bob.acc)))
+		rects.append(pygame.draw.line(screen, [0,255,0], pointToScreen(pendulum.bob.position), pointToScreen(pendulum.bob.position + pendulum.bob.vel)))
 		
 		return rects
 		
@@ -110,11 +112,12 @@ def pointToScreen(world):
 # define a main function
 def main():
 	engine = Engine()
-	pendulum = InvPendulum()
+	pendulum = Pendulum()
 	engine.entities.append(pendulum)
 
 	# unstable penulum!
 	pendulum.setAngle(math.pi / 20)
+	pendulum.base.vel = np.array([0.1,0.1]).astype('f')
 	
 	pygame.init()
 	pygame.display.set_caption("Inverted Pendulum PID")
@@ -144,7 +147,7 @@ def main():
 		for rect in last_rects:
 			pygame.draw.rect(screen, [0, 0, 0], rect)
 			
-		rects = InvPendulumRender.render(screen, pendulum)
+		rects = PendulumRender.render(screen, pendulum)
 		pygame.display.update(last_rects)
 		pygame.display.update(rects)
 	 
