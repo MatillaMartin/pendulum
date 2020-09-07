@@ -84,9 +84,9 @@ class PendulumRender:
 	@staticmethod
 	def render(camera, pendulum):
 		rects = []
-		base_start = pendulum.base.position-np.array([ camera.sizeToScreen(0.001),0])
-		base_end = pendulum.base.position+np.array([ camera.sizeToScreen(0.001),0])
-		rects.append(pygame.draw.line(camera.screen, [255, 255, 255], camera.worldToScreen(base_start), camera.worldToScreen(base_end)))
+		base_size = [camera.sizeToScreen(0.1),camera.sizeToScreen(0.1)]
+		base_start = camera.worldToScreen(pendulum.base.position) - np.array(base_size)/2.0
+		rects.append(pygame.draw.rect(camera.screen, [255, 255, 255], pygame.Rect(tuple(base_start), tuple(base_size))))
 		rects.append(pygame.draw.line(camera.screen, [255, 255, 255], camera.worldToScreen(pendulum.base.position), camera.worldToScreen(pendulum.bob.position)))
 		rects.append(pygame.draw.circle(camera.screen, [255, 255, 255], camera.worldToScreen(pendulum.bob.position), int(camera.sizeToScreen(0.05))))
 		
@@ -96,10 +96,12 @@ class PendulumRender:
 		
 		#rects.append(pygame.draw.line(camera.screen, [255, 0,0], camera.worldToScreen(pendulum.base.position), camera.worldToScreen(pendulum.base.position + pendulum.base.acc)))
 		#rects.append(pygame.draw.line(camera.screen, [0,255,0], camera.worldToScreen(pendulum.base.position), camera.worldToScreen(pendulum.base.position + pendulum.base.vel)))
-		textsurface = text_font.render('Acc: ' + np.array_str(pendulum.base.acc), True, (255, 255, 255))
+		textsurface = text_font.render('Pos: ' + np.array_str(pendulum.base.position), True, (255, 255, 255))
 		rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.position)))
-		textsurface = text_font.render('Angle: ' + str(pendulum.angle * 180 / math.pi), True, (255, 255, 255))
+		textsurface = text_font.render('Acc: ' + np.array_str(pendulum.base.acc), True, (255, 255, 255))
 		rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.position) + np.array([0, 40])))
+		textsurface = text_font.render('Angle: ' + str(pendulum.angle * 180 / math.pi), True, (255, 255, 255))
+		rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.position) + np.array([0, 80])))
 		
 		return rects
 		
@@ -114,12 +116,15 @@ class GridRender:
 		cameraSizeWorld = maxWorld - minWorld
 		horCells = int(math.floor(cameraSizeWorld[0] / cellSize))
 		verCells = int(math.floor(cameraSizeWorld[1] / cellSize))
+		xStart = int(math.floor(minWorld[0] / cellSize) * cellSize)
+		yStart = int(math.floor(minWorld[1] / cellSize) * cellSize)
+		
 		for x in range(horCells + 1):
-			gridX = (math.floor(minWorld[0] / cellSize) + x) * cellSize
-			rects.append(pygame.draw.line(camera.screen, [255, 255, 255], camera.worldToScreen([gridX, 0]), camera.worldToScreen([gridX, camera.screen_size[1]])))
+			gridX = int(xStart + x * cellSize)
+			rects.append(pygame.draw.line(camera.screen, [255, 255, 255], camera.worldToScreen([gridX, minWorld[1]]), camera.worldToScreen([gridX, maxWorld[1]])))
 		for y in range(verCells + 1):
-			gridY = (math.floor(minWorld[1] / cellSize) + y) * cellSize
-			rects.append(pygame.draw.line(camera.screen, [255, 255, 255], camera.worldToScreen([0, gridY]), camera.worldToScreen([camera.screen_size[0], gridY])))
+			gridY = int(yStart + y * cellSize)
+			rects.append(pygame.draw.line(camera.screen, [255, 255, 255], camera.worldToScreen([minWorld[0], gridY]), camera.worldToScreen([maxWorld[0], gridY])))
 		
 		rects.append(pygame.draw.line(camera.screen, [255,0,0], camera.worldToScreen([0, 0]), camera.worldToScreen([1,0])))
 		rects.append(pygame.draw.line(camera.screen, [0,255,0], camera.worldToScreen([0, 0]), camera.worldToScreen([0,1])))
