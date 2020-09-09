@@ -180,37 +180,65 @@ class ManualControl:
 		if keys[pygame.K_LEFT]:
 			pendulum.base.acc[0] = -20
 
-class PIDControl:
-# PID to minimize the pendulum angle
+class MPIDControl:
+	# PID to control multiple variables
 	def __init__(self):
-		self.Kp = 300.0
-		self.Ki = 300.0
-		self.Kd = 20.0
+		self.pids = [AnglePIDControl(), PositionPIDControl()]
+		self.weights = [0.9, 0.1]
+		
+	def update(self, pendulum, delta_s):
+		acc = np.array([0.0,0.0])
+		for pid, weight in zip(self.pids, self.weights):
+			control = pid.update(pendulum, delta_s)
+			acc[0] += control * weight
+		pendulum.base.acc = acc
+
+class PIDControl:
+	# PID to control a variable
+	def __init__(self):
+		self.Kp = 0.0
+		self.Ki = 0.0
+		self.Kd = 0.0
 		self.lastError = 0.0
 		self.iv = 0.0 # integral
 		
-	def update(self, pendulum, delta_s):
-		angle_error = 0 - pendulum.angle # desired angle is zero
-		position_error = 0 - pendulum.base.pos[0]
-		
-		lambda_weight = 0.01		
-		#error = angle_error + lambda_weight * position_error
-		error = angle_error
-		acc = np.array([0.0,0.0]).astype('f')
-		
+	def update(self, error, delta_s):
 		# compute derivative
 		dv = (error - self.lastError) / delta_s
-		
 		# compute integral
 		self.iv += error * delta_s
-		
-		# only sideways for now
-		acc[0] =  self.Kp * error + self.Ki*self.iv + self.Kd*dv
-		
-		pendulum.base.acc = acc
+		# compute control
+		control = self.Kp * error + self.Ki*self.iv + self.Kd*dv
 		# print(acc[0])
 		self.lastError = error
-
+		return control
+		
+class AnglePIDControl:
+	# PID to minimize the pendulum angle
+	def __init__(self):
+		self.pid = PIDControl()
+		self.pid.Kp = 300.0
+		self.pid.Ki = 300.0
+		self.pid.Kd = 20.0
+		
+	def update(self, pendulum, delta_s):
+		error = 0 - pendulum.angle # desired angle is zero	
+		control = self.pid.update(error, delta_s);
+		return control
+		
+class PositionPIDControl:
+	# PID to minimize the position
+	def __init__(self):
+		self.pid = PIDControl()
+		self.pid.Kp = 500.0
+		self.pid.Ki = 25.0
+		self.pid.Kd = 30.0
+		
+	def update(self, pendulum, delta_s):
+		error = pendulum.base.pos[0]
+		control = self.pid.update(error, delta_s);
+		return control
+		
 class Camera:
 	# create a surface on screen
 	screen_size = np.array([1400, 700])
@@ -236,13 +264,14 @@ class Camera:
 def main():
 	engine = Engine()
 	manual_control = ManualControl()
-	control = PIDControl()
+	control = MPIDControl()
 	pendulum = Pendulum()
 	camera = Camera()
 	engine.entities.append(pendulum)
 
 	# unstable penulum!
-	pendulum.setAngle(math.pi/10.0)
+	pendulum.setAngle(math.pi/100.0)
+	pendulum.base.pos[0] = 5
 	
 	pygame.init()
 	pygame.display.set_caption("Inverted Pendulum PID")
@@ -265,12 +294,13 @@ def main():
 					pygame.quit()
 					return
 				if event.key == pygame.K_SPACE:
-					pendulum.setAngle(0)
-					#pendulum.base.pos = np.array([0.,0.])
 					pendulum.base.acc = np.array([0.,0.])
 					pendulum.base.vel = np.array([0.,0.])
 					pendulum.bob.acc = np.array([0.,0.])
 					pendulum.bob.vel = np.array([0.,0.])
+					pendulum.base.pos[0] = 5
+					pendulum.setAngle(math.pi/100)
+					
 				if event.key == pygame.K_d:
 					global render_debug 
 					render_debug = not render_debug
