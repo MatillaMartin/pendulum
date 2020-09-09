@@ -12,11 +12,28 @@ gravity = 9.81 # m/s
 
 pygame.font.init() 
 text_font = pygame.font.SysFont('segoe-ui', 30)
-	
+render_debug = False
 
+class Link:
+	def __init__(self, start, end):
+		self.length = 1
+		self.start = start
+		self.end = end
+		
+	def update(self):
+		start_world = self.start.pos
+		end_world = self.end.pos
+		dir = end_world - start_world
+		dir = dir / np.linalg.norm(dir) * self.length # normalize to length
+		self.end.pos = start_world + dir
+		
+	def direction(self):
+		vector = self.end.pos - self.start.pos
+		return (vector / np.linalg.norm(vector))
+		
 class Entity:
 	def __init__(self):
-		self.position = np.array([0,0]).astype('f')
+		self.pos = np.array([0,0]).astype('f')
 		self.vel = np.array([0,0]).astype('f')
 		self.acc = np.array([0,0]).astype('f')
 		self.friction = 0
@@ -26,32 +43,30 @@ class Entity:
 	def update(self, delta_s):
 		self.vel += self.acc * float(delta_s)
 		self.vel -= self.vel * self.friction * float(delta_s)
-		self.position += self.vel * float(delta_s)
+		self.pos += self.vel * float(delta_s)
 		# print("Acc:", self.acc)
 		# print("Vel:", self.vel)
-		# print("Position:", self.position)
+		# print("Pos:", self.pos)
 	
 class Pendulum:
 	def __init__(self):
 		self.bob = Entity()
 		self.base = Entity()
+		self.link = Link(self.base, self.bob)
 		self.base.friction = 2
 		self.bob.friction = 0.0 #0.1
-		self.length = 1
 		self.setAngle(0) # CW angle wrt vertical 
 	
 	def update(self, delta_s):		
-		self.base.update(delta_s)
 		
-		pole_vector = self.bob.position - self.base.position
-		pole_direction = pole_vector/np.linalg.norm(pole_vector)
+		self.base.update(delta_s)
+		self.link.update() # force length
+		pole_direction = self.link.direction()
 		
 		self.bob.acc = np.array([0.0,0.0])
 		#gravity acceleration
 		self.bob.acc += np.array([0,-gravity])
-		# base acceleration through rigid rod
-		self.bob.acc += pole_vector * np.dot(self.base.acc, pole_vector)
-		
+
 		# resolve constraints
 		pole_ppd = np.array([pole_direction[1], -pole_direction[0]])
 		self.bob.acc = pole_ppd * np.dot(self.bob.acc, pole_ppd)
@@ -62,46 +77,45 @@ class Pendulum:
 		# print("Acc:", self.bob.acc)
 		# print("Vel:", self.bob.vel)
 		self.bob.update(delta_s)
-		
-		# force length
-		pole_vector = self.bob.position - self.base.position
-		pole_direction = pole_vector/np.linalg.norm(pole_vector)
-		self.bob.position = self.base.position + pole_direction * self.length
+		self.link.update() # force length
+		pole_direction = self.link.direction()
 		#update angle
-		#self.angle = math.acos( pole_direction[1] / self.length )
 		self.angle = math.atan2( -pole_direction[0], pole_direction[1] );
 
 		
 	def setAngle(self, angle):
 		self.angle = angle
-		self.bob.position = self.length * np.array([math.sin(angle), math.cos(angle)])
-		
-	def accelerate(self, amount):
-		self.base.acc = amout
-		# transfer acc through rod
+		self.bob.pos = self.base.pos + self.link.length * np.array([math.sin(angle), math.cos(angle)])
 
 class PendulumRender:
 	@staticmethod
 	def render(camera, pendulum):
 		rects = []
 		base_size = [camera.sizeToScreen(0.1),camera.sizeToScreen(0.1)]
-		base_start = camera.worldToScreen(pendulum.base.position) - np.array(base_size)/2.0
+		base_start = camera.worldToScreen(pendulum.base.pos) - np.array(base_size)/2.0
 		rects.append(pygame.draw.rect(camera.screen, [255, 255, 255], pygame.Rect(tuple(base_start), tuple(base_size))))
-		rects.append(pygame.draw.line(camera.screen, [255, 255, 255], camera.worldToScreen(pendulum.base.position), camera.worldToScreen(pendulum.bob.position)))
-		rects.append(pygame.draw.circle(camera.screen, [255, 255, 255], camera.worldToScreen(pendulum.bob.position), int(camera.sizeToScreen(0.05))))
+		rects.append(pygame.draw.line(camera.screen, [255, 255, 255], camera.worldToScreen(pendulum.base.pos), camera.worldToScreen(pendulum.bob.pos)))
+		rects.append(pygame.draw.circle(camera.screen, [255, 255, 255], camera.worldToScreen(pendulum.bob.pos), int(camera.sizeToScreen(0.05))))
 		
-		# render debug too
-		#rects.append(pygame.draw.line(camera.screen, [255, 0,0], camera.worldToScreen(pendulum.bob.position), camera.worldToScreen(pendulum.bob.position + pendulum.bob.acc)))
-		#rects.append(pygame.draw.line(camera.screen, [0,255,0], camera.worldToScreen(pendulum.bob.position), camera.worldToScreen(pendulum.bob.position + pendulum.bob.vel)))
-		
-		#rects.append(pygame.draw.line(camera.screen, [255, 0,0], camera.worldToScreen(pendulum.base.position), camera.worldToScreen(pendulum.base.position + pendulum.base.acc)))
-		#rects.append(pygame.draw.line(camera.screen, [0,255,0], camera.worldToScreen(pendulum.base.position), camera.worldToScreen(pendulum.base.position + pendulum.base.vel)))
-		textsurface = text_font.render('Pos: ' + np.array_str(pendulum.base.position), True, (255, 255, 255))
-		rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.position)))
-		textsurface = text_font.render('Acc: ' + np.array_str(pendulum.base.acc), True, (255, 255, 255))
-		rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.position) + np.array([0, 40])))
-		textsurface = text_font.render('Angle: ' + str(pendulum.angle * 180 / math.pi), True, (255, 255, 255))
-		rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.position) + np.array([0, 80])))
+		if render_debug:
+			# render debug too
+			# rects.append(pygame.draw.line(camera.screen, [255, 0,0], camera.worldToScreen(pendulum.bob.pos), camera.worldToScreen(pendulum.bob.pos + pendulum.bob.acc)))
+			# rects.append(pygame.draw.line(camera.screen, [0,255,0], camera.worldToScreen(pendulum.bob.pos), camera.worldToScreen(pendulum.bob.pos + pendulum.bob.vel)))
+			
+			# rects.append(pygame.draw.line(camera.screen, [255, 0,0], camera.worldToScreen(pendulum.base.pos), camera.worldToScreen(pendulum.base.pos + pendulum.base.acc)))
+			# rects.append(pygame.draw.line(camera.screen, [0,255,0], camera.worldToScreen(pendulum.base.pos), camera.worldToScreen(pendulum.base.pos + pendulum.base.vel)))
+			textsurface = text_font.render('Base Pos: ' + np.array_str(pendulum.base.pos), True, (255, 255, 255))
+			rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.pos)))
+			textsurface = text_font.render('Base Acc: ' + np.array_str(pendulum.base.acc), True, (255, 255, 255))
+			rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.pos) + np.array([0, 40])))
+			textsurface = text_font.render('Angle: ' + str(pendulum.angle * 180 / math.pi), True, (255, 255, 255))
+			rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.pos) + np.array([0, 80])))
+			textsurface = text_font.render('Bob Pos: ' + np.array_str(pendulum.bob.pos), True, (255, 255, 255))
+			rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.pos) + np.array([0, 120])))
+			textsurface = text_font.render('Bob Vel: ' + np.array_str(pendulum.bob.vel) + " Norm: " + str(np.linalg.norm(pendulum.bob.vel)) , True, (255, 255, 255))
+			rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.pos) + np.array([0, 160])))
+			textsurface = text_font.render('Bob Acc: ' + np.array_str(pendulum.bob.acc) + " Norm: " + str(np.linalg.norm(pendulum.bob.acc)) , True, (255, 255, 255))
+			rects.append(camera.screen.blit(textsurface, camera.worldToScreen(pendulum.base.pos) + np.array([0, 200])))
 		
 		return rects
 		
@@ -109,7 +123,7 @@ class GridRender:
 	@staticmethod
 	def render(camera):
 		rects = []
-		cellSize = 1
+		cellSize = 2
 		# find min and max world in camera
 		minWorld = camera.screenToWorld(np.array([0,0]))
 		maxWorld = camera.screenToWorld(camera.screen_size)
@@ -137,7 +151,7 @@ class GridRender:
 		return rects
 
 class Engine:
-	step_time = 1.0 / 1000 # simulate update every 0.2ms
+	step_time = 0.1 / 1000 # simulate update every 0.2ms
 	
 	def __init__(self):
 		self.entities = []
@@ -160,26 +174,28 @@ class Engine:
 class ManualControl:
 	def update(self, pendulum, delta_s):
 		keys = pygame.key.get_pressed()
+		
 		if keys[pygame.K_RIGHT]:
-			pendulum.base.acc[0] = 10
+			pendulum.base.acc[0] = 20
 		if keys[pygame.K_LEFT]:
-			pendulum.base.acc[0] = -10
+			pendulum.base.acc[0] = -20
 
 class PIDControl:
 # PID to minimize the pendulum angle
 	def __init__(self):
-		self.Kp = 100.0
-		self.Ki = 1.0
-		self.Kd = 10.0
+		self.Kp = 300.0
+		self.Ki = 300.0
+		self.Kd = 20.0
 		self.lastError = 0.0
 		self.iv = 0.0 # integral
 		
 	def update(self, pendulum, delta_s):
+		angle_error = 0 - pendulum.angle # desired angle is zero
+		position_error = 0 - pendulum.base.pos[0]
 		
-		pv = pendulum.angle # sample pendulum angle
-		sv = 0 # desired angle is zero
-		
-		error = sv - pv
+		lambda_weight = 0.01		
+		#error = angle_error + lambda_weight * position_error
+		error = angle_error
 		acc = np.array([0.0,0.0]).astype('f')
 		
 		# compute derivative
@@ -226,7 +242,7 @@ def main():
 	engine.entities.append(pendulum)
 
 	# unstable penulum!
-	pendulum.setAngle(-math.pi / 4)
+	pendulum.setAngle(math.pi/10.0)
 	
 	pygame.init()
 	pygame.display.set_caption("Inverted Pendulum PID")
@@ -244,10 +260,21 @@ def main():
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT:
 				running = False
-			elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-			   pygame.quit()
-			   return
-				
+			elif event.type == pygame.KEYDOWN:
+				if event.key == pygame.K_ESCAPE:
+					pygame.quit()
+					return
+				if event.key == pygame.K_SPACE:
+					pendulum.setAngle(0)
+					#pendulum.base.pos = np.array([0.,0.])
+					pendulum.base.acc = np.array([0.,0.])
+					pendulum.base.vel = np.array([0.,0.])
+					pendulum.bob.acc = np.array([0.,0.])
+					pendulum.bob.vel = np.array([0.,0.])
+				if event.key == pygame.K_d:
+					global render_debug 
+					render_debug = not render_debug
+					
 		# update physics with constant steps
 		engine.update(delta_s)
 		
@@ -255,7 +282,7 @@ def main():
 		control.update(pendulum, delta_s)
 		manual_control.update(pendulum, delta_s)
 		
-		camera.track(pendulum.base.position)
+		camera.track(pendulum.base.pos)
 		
 		#render loop
 		last_rects = rects
